@@ -12,23 +12,31 @@ import { useAuthStore } from '../store/authStore';
 import { useFilterStore } from '../store/filterStore';
 import AssistantChat from '../components/AssistantChat';
 import { api } from '../utils/api';
-import { socket } from '../utils/socket';
-import { getConnectorDisplay, isDcConnector } from '../utils/connectorTypes';
-import { getSpeedLabel, getSpeedColor } from '../utils/chargingSpeed';
-import { getStatusInfo } from '../utils/ocppStatusMapper';
+
 // Import new Icon System
-import {
-  AppIcon, IconColors, IconSize,
-  DynamicStatusIcon
+import { 
+  AppIcon, IconColors, IconSize, 
+  DynamicStatusIcon 
 } from '../components/icons';
 
+const STATUS_COLOR: Record<string, string> = {
+  Available: '#22c55e',
+  Busy: '#f59e0b',
+  Charging: '#3b82f6',
+  Reserved: '#f59e0b',
+  Occupied: '#f59e0b',
+  Faulted: '#ef4444',
+  Unavailable: '#6b7280',
+  Offline: '#6b7280',
+  Unknown: '#6b7280',
+};
 
 const POWER_OPTIONS = [
   { label: 'All', value: 0 },
   { label: '7+ kW', value: 7 },
   { label: '22+ kW', value: 22 },
   { label: '50+ kW', value: 50 },
-  { label: '150+ kW', value: 150 },
+  { label: '150+ kW',value: 150 },
 ];
 
 const PRICE_OPTIONS = [
@@ -41,14 +49,15 @@ const PRICE_OPTIONS = [
 
 // ── Connector & Vehicle Type Filters ──────────────────
 const CONNECTOR_TYPES = [
-  { label: 'All Types', value: [] as string[] },
-  { label: 'CCS2', value: ['CCS2'] },
-  { label: 'Type 2', value: ['Type2'] },
-  { label: 'CHAdeMO', value: ['CHAdeMO'] },
-  { label: 'Bharat AC', value: ['BharatAC'] },
-  { label: 'Bharat DC', value: ['BharatDC'] },
-  { label: '3-Pin', value: ['ThreePin'] },
-  { label: '2W / 3W', value: ['BharatAC', 'ThreePin'] },];
+  { label: 'All Types',  value: [] as string[] },
+  { label: 'CCS2',       value: ['CCS2']                    },
+  { label: 'Type 2',     value: ['Type2']                   },
+  { label: 'CHAdeMO',    value: ['CHAdeMO']                 },
+  { label: 'Bharat AC',  value: ['BharatAC']                },
+  { label: 'Bharat DC',  value: ['BharatDC']                },
+  { label: '3-Pin',      value: ['ThreePin']                },
+  { label: '2W / 3W',    value: ['BharatAC', 'ThreePin']    },
+];
 
 const VEHICLE_TYPES = [
   { label: 'All', value: 'all' },
@@ -58,7 +67,6 @@ const VEHICLE_TYPES = [
   { label: 'Bus / Truck', value: 'Bus' },
 ];
 
-
 // ─────────────────────────────────────────────────────
 // ChargerMarker - Pure View/Text for Map Performance
 // Do NOT use DynamicStatusIcon here
@@ -66,56 +74,54 @@ const VEHICLE_TYPES = [
 const MARKER_W = 44;
 const MARKER_H = 48;
 
-// In ChargerMarker — track changes based on status:
-const ChargerMarker = React.memo(({ charger, onPress, isReserved }) => {
-  //  Re-enable tracking when status changes so color updates immediately
+const ChargerMarker = React.memo(({ charger, onPress, isReserved }: {
+  charger: Charger;
+  onPress: (c: Charger) => void;
+  isReserved: boolean;
+}) => {
   const [rendered, setRendered] = useState(false);
-  const prevStatusRef = useRef(charger.status);
-
-  // Reset rendered flag when status changes so marker re-renders
-  useEffect(() => {
-    if (prevStatusRef.current !== charger.status) {
-      prevStatusRef.current = charger.status;
-      setRendered(false);  // ← forces tracksViewChanges=true briefly
-    }
-  }, [charger.status]);
 
   const bgColor =
-    isReserved                      ? '#7c3aed' :
-    charger.status === 'Available'  ? '#10b981' :
-    charger.status === 'Busy'       ? '#f59e0b' :
-    charger.status === 'Charging'   ? '#3b82f6' :
-    charger.status === 'Faulted'    ? '#ef4444' : '#6b7280';
+    isReserved ? '#7c3aed' : // purple for reserved
+    charger.status === 'Available' ? '#10b981' :
+    charger.status === 'Busy' ? '#f59e0b' :
+    charger.status === 'Charging' ? '#3b82f6' :
+    charger.status === 'Faulted' ? '#ef4444' : '#6b7280';
+
+  const connectorLabel =
+    `${charger.availableConnectors ?? 0}/${charger.totalConnectors ?? 0}`;
 
   return (
     <Marker
       coordinate={{ latitude: charger.latitude, longitude: charger.longitude }}
       onPress={() => onPress(charger)}
       anchor={{ x: 0.5, y: 1 }}
-      tracksViewChanges={!rendered}   // ← false normally, true briefly on status change
+      tracksViewChanges={!rendered}
       stopPropagation
     >
       <View
-        style={{ width: 56, height: 58, alignItems: 'center' }}
+        style={{ width: MARKER_W + 12, height: MARKER_H + 10, alignItems: 'center' }}
         onLayout={() => setRendered(true)}
       >
         <View style={[sq.badge, { backgroundColor: bgColor }]}>
-          <AppIcon.Zap color="#FFFFFF" size={20} />
-          <Text style={sq.count}>
-            {charger.availableConnectors ?? 0}/{charger.totalConnectors ?? 0}
-          </Text>
+          {/* Icon instead of emoji */}
+          {isReserved ? (
+            <AppIcon.Clock size={20} color="#fff" />
+          ) : (
+            <AppIcon.Zap size={20} color="#fff" />
+          )}
+          <Text style={sq.count}>{connectorLabel}</Text>
         </View>
         <View style={[sq.pointer, { borderTopColor: bgColor }]} />
       </View>
     </Marker>
   );
 },
-//  Custom comparator — re-render when status OR connector counts change
 (prev, next) =>
-  prev.charger.status              === next.charger.status &&
+  prev.charger.status === next.charger.status &&
   prev.charger.availableConnectors === next.charger.availableConnectors &&
-  prev.charger.totalConnectors     === next.charger.totalConnectors &&
-  prev.isReserved                  === next.isReserved
+  prev.charger.totalConnectors === next.charger.totalConnectors &&
+  prev.isReserved === next.isReserved
 );
 
 const sq = StyleSheet.create({
@@ -151,7 +157,8 @@ const sq = StyleSheet.create({
     height: 0,
     borderLeftWidth: 6,
     borderRightWidth: 6,
-    borderTopWidth: 7, borderLeftColor: 'transparent',
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     marginTop: -1,
   },
@@ -200,6 +207,7 @@ function PricingCard({ charger, connectorId, user }: {
   }
 
   const { pricing } = charger;
+
   return (
     <View style={pc.card}>
       <View style={pc.header}>
@@ -209,6 +217,7 @@ function PricingCard({ charger, connectorId, user }: {
         </View>
         <Text style={pc.rateName}>{pricing.displayName}</Text>
       </View>
+
       <Text style={pc.rate}>{pricing.rateDisplay}</Text>
 
       {pricing.sessionFee > 0 && (
@@ -249,8 +258,8 @@ function PricingCard({ charger, connectorId, user }: {
           <View style={pc.estimateTitleRow}>
             <AppIcon.TrendingUp size={IconSize.sm} color={IconColors.muted} />
             <Text style={pc.estimateTitle}>Your Estimate</Text>
-          </View> 
-	  {estimate.estimatedCost != null ? (
+          </View>
+          {estimate.estimatedCost != null ? (
             <>
               <View style={pc.estimateRow}>
                 <Text style={pc.estimateLabel}>Total Cost</Text>
@@ -262,26 +271,11 @@ function PricingCard({ charger, connectorId, user }: {
                 <View style={pc.estimateRow}>
                   <Text style={pc.estimateLabel}>Est. Time</Text>
                   <Text style={pc.estimateValue}>
-                    {estimate.estimatedDuration >= 60
-                      ? `${Math.floor(estimate.estimatedDuration / 60)}h ${estimate.estimatedDuration % 60}m`
-                      : `${estimate.estimatedDuration} min`}
+                    ~{estimate.estimatedDuration} min
                   </Text>
                 </View>
               )}
-              <Text style={pc.breakdown}>
-                {estimate.breakdown?.replace(
-                  /Est\. time: ~(\d+) min/,
-                  (match, minutes) => {
-                    const mins = parseInt(minutes);
-                    if (mins >= 60) {
-                      const hrs = Math.floor(mins / 60);
-                      const remainingMins = mins % 60;
-                      return `Est. time: ~${hrs}h ${remainingMins}m`;
-                    }
-                    return match;
-                  }
-                )}
-              </Text>
+              <Text style={pc.breakdown}>{estimate.breakdown}</Text>
             </>
           ) : (
             <Text style={pc.noVehicle}>
@@ -300,6 +294,7 @@ function FilterSheet({ visible, onClose }: {
 }) {
   const { filters, setFilters, resetFilters } = useFilterStore();
   const slideAnim = useRef(new Animated.Value(300)).current;
+
   useEffect(() => {
     Animated.spring(slideAnim, {
       toValue: visible ? 0 : 300,
@@ -310,9 +305,10 @@ function FilterSheet({ visible, onClose }: {
 
   return (
     <Animated.View style={[fs.sheet,
-    { transform: [{ translateY: slideAnim }] }]}>
+      { transform: [{ translateY: slideAnim }] }]}>
       <View style={fs.handle} />
       <Text style={fs.title}>Filter Chargers</Text>
+
       <Text style={fs.label}>Availability</Text>
       <View style={fs.row}>
         {(['all', 'available'] as const).map(v => {
@@ -329,15 +325,15 @@ function FilterSheet({ visible, onClose }: {
               <View style={fs.chipContent}>
                 {v === 'all' ? (
                   <>
-                    <AppIcon.Plug size={IconSize.s} color={active ? '#ffffff' : '#64748b'} />
-                    <Text style={[fs.chipText, active && fs.chipTextActive]}>
+                    <AppIcon.Plug size={IconSize.s} color={active ? '#ffffff' : '#64748b'}/>
+                    <Text style={[ fs.chipText, active && fs.chipTextActive, ]}>
                       All
                     </Text>
                   </>
                 ) : (
                   <>
-                    <AppIcon.Success size={IconSize.s} color={active ? '#ffffff' : '#64748b'} />
-                    <Text style={[fs.chipText, active && fs.chipTextActive]}>
+                    <AppIcon.Success size={IconSize.s} color={active ? '#ffffff' : '#64748b'}/>
+                    <Text style={[ fs.chipText, active && fs.chipTextActive, ]} >
                       Available Only
                     </Text>
                   </>
@@ -348,7 +344,7 @@ function FilterSheet({ visible, onClose }: {
         })}
       </View>
 
-      {/* Connector Type Filter */} 
+      {/* Connector Type Filter */}
       <Text style={fs.label}>Connector Type</Text>
       <ScrollView
         horizontal
@@ -399,6 +395,7 @@ function FilterSheet({ visible, onClose }: {
           </TouchableOpacity>
         ))}
       </ScrollView>
+
       <Text style={fs.label}>Max Distance</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         style={fs.chipScroll}>
@@ -447,36 +444,30 @@ export default function MapScreen({ navigation }: any) {
     chargers, fetchChargers, requestLocation,
     userLocation, isLoading,
     isOffline, cacheAge,
-    updateConnectorStatus, 
-    } = useChargerStore();
+  } = useChargerStore();
+
   const { startSession, fetchActiveSession, activeSession } = useSessionStore();
   const { user } = useAuthStore();
   const { filters, setFilters, showFilterSheet, toggleFilterSheet } = useFilterStore();
 
-  // Use selectedId instead of storing full charger object
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Charger | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedConnector, setSelectedConnector] = useState<number | null>(null);
   const [starting, setStarting] = useState(false);
   const [reserving, setReserving] = useState(false);
   const [activeReservation, setActiveReservation] = useState<any>(null);
+
   const startingRef = useRef(false);
   const mapRef = useRef<MapView>(null);
 
   const reservedChargeBoxId = activeReservation?.chargeBoxId ?? null;
-
-  // Derive selected LIVE from chargers array — always up to date
-  const selected = useMemo(
-    () => chargers.find(c => c.chargeBoxId === selectedId) ?? null,
-    [chargers, selectedId]
-  );
-
   const filteredChargers = useMemo(() =>
     (chargers || []).filter(c => {
+  
       // ── 1. Availability ─────────────────────────────
       if (filters.availability === 'available' && c.status !== 'Available')
         return false;
-
+  
       // ── 2. Min Power (per-connector, not charger-level) ──
       if (filters.minPower > 0) {
         const hasEnoughPower = (c.connectorStatuses || [])
@@ -488,42 +479,43 @@ export default function MapScreen({ navigation }: any) {
         const chargerKw = (c.maxPower || 0) / 1000;
         if (!hasEnoughPower && chargerKw < filters.minPower) return false;
       }
-
+  
       // ── 3. Max Distance ──────────────────────────────
       if (filters.maxDistance < 999 && c.distance != null
         && c.distance > filters.maxDistance)
         return false;
-
+  
       // ── 4. Max Price (uses highest tier for tiered pricing) ──
       if (filters.maxPrice < 999 && c.pricing != null) {
         let effectiveRate = c.pricing.ratePerKwh ?? 0;
+  
         if (c.pricing.model === 'tiered_power' && c.pricing.tiers?.length > 0) {
           effectiveRate = Math.max(
             ...c.pricing.tiers.map((t: any) => t.rate_per_kwh ?? 0)
           );
         }
-
+  
         if (effectiveRate > filters.maxPrice) return false;
       }
-
+  
       // ── 5. Connector Type ────────────────────────────
       if (filters.connectorType.length > 0) {
         const connTypes = (c.connectorStatuses || [])
           .map((conn: any) => conn.connectorType)
           .filter(Boolean);
-
+  
         // Skip filter if backend hasn't enriched data yet
         if (connTypes.length > 0) {
           const hasMatch = filters.connectorType.some(t => connTypes.includes(t));
           if (!hasMatch) return false;
         }
       }
-
+  
       // ── 6. Vehicle Type ──────────────────────────────
       if (filters.vehicleType !== 'all') {
         const connectors = c.connectorStatuses || [];
         const hasVehicleData = connectors.some((conn: any) => !!conn.vehicleCategory);
-
+  
         if (hasVehicleData) {
           const supportsVehicle = connectors.some((conn: any) => {
             if (!conn.vehicleCategory) return false;
@@ -534,10 +526,10 @@ export default function MapScreen({ navigation }: any) {
         }
         // If no vehicleCategory data — don't filter out (graceful degradation)
       }
-
+  
       return true;
     }),
-    [chargers, filters]);
+  [chargers, filters]);
 
   const activeFilterCount = [
     filters.availability !== 'all',
@@ -545,13 +537,14 @@ export default function MapScreen({ navigation }: any) {
     filters.maxDistance < 999,
     filters.maxPrice < 999,
     filters.connectorType.length > 0,
-    filters.vehicleType !== 'all', 
-    ].filter(Boolean).length;
+    filters.vehicleType !== 'all',
+  ].filter(Boolean).length;
 
   useEffect(() => {
     requestLocation();
     fetchActiveSession();
     fetchChargers();
+    
     const interval = setInterval(fetchChargers, 2 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
@@ -563,7 +556,7 @@ export default function MapScreen({ navigation }: any) {
           setActiveReservation(r.data.data);
         }
       })
-      .catch(() => { });
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -595,28 +588,12 @@ export default function MapScreen({ navigation }: any) {
         })),
         { edgePadding: { top: 80, right: 40, bottom: 80, left: 40 },
           animated: true },
-      ); }, 500);
+      );
+    }, 500);
   }, [filteredChargers.length, userLocation?.latitude]);
 
-  // Listen for real-time connector status updates
-  useEffect(() => {
-    const handleStatus = (msg: any) => {
-      const data = msg.data || msg;
-      if (!data?.chargeBoxId || !data?.connectorId || !data?.status) return;
-
-      updateConnectorStatus(
-        data.chargeBoxId,
-        data.connectorId,
-        data.status
-      );
-    };
-
-    socket.on('charger:status', handleStatus);
-    return () => socket.off('charger:status', handleStatus);
-  }, [updateConnectorStatus]);
-
   const handleMarkerPress = useCallback((charger: Charger) => {
-    setSelectedId(charger.chargeBoxId);
+    setSelected(charger);
     setSelectedConnector(null);
     setModalVisible(true);
   }, []);
@@ -640,10 +617,10 @@ export default function MapScreen({ navigation }: any) {
         [{ text: 'OK' }]
       );
       return;
-    }
+    }   
     if (startingRef.current) return;
     if (!selected || !selectedConnector) {
-      Alert.alert('Select Connector', 'Please select a connector first.'); 
+      Alert.alert('Select Connector', 'Please select a connector first.');
       return;
     }
     if (activeSession) {
@@ -651,12 +628,13 @@ export default function MapScreen({ navigation }: any) {
         'You already have an active charging session.');
       return;
     }
+
     startingRef.current = true;
     setStarting(true);
 
     try {
       const idTag = user?.idTag;
-
+      
       if (!idTag) {
         Alert.alert(
           'Account Setup Incomplete',
@@ -666,11 +644,10 @@ export default function MapScreen({ navigation }: any) {
         setStarting(false);
         startingRef.current = false;
         return;
-      }
+      }   
       await startSession(selected.chargeBoxId, selectedConnector, idTag);
       setModalVisible(false);
       setSelectedConnector(null);
-      setSelectedId(null); 
       if (activeReservation?.chargeBoxId === selected.chargeBoxId) {
         setActiveReservation(null);
       }
@@ -681,9 +658,10 @@ export default function MapScreen({ navigation }: any) {
       const isTimeout = err?.code === 'ECONNABORTED'
         || err?.message?.includes('timeout')
         || err?.message?.includes('Network Error');
-      const isInsufficientBalance =
+   const isInsufficientBalance =
         err?.response?.status === 402 ||
         err?.response?.data?.code === 'INSUFFICIENT_BALANCE';
+
       if (isInsufficientBalance) {
         const balance = err?.response?.data?.currentBalance ?? 0;
         Alert.alert(
@@ -693,8 +671,8 @@ export default function MapScreen({ navigation }: any) {
             {
               text: 'Add Money',
               onPress: () => {
-                setModalVisible(false); 
-		navigation.navigate('Wallet');
+                setModalVisible(false);
+                navigation.navigate('Wallet');
               }
             },
             { text: 'Cancel', style: 'cancel' }
@@ -702,7 +680,7 @@ export default function MapScreen({ navigation }: any) {
         );
         return;
       }
-
+  
       Alert.alert(
         isTimeout ? 'Connecting to Charger...' : 'Failed',
         isTimeout
@@ -710,7 +688,7 @@ export default function MapScreen({ navigation }: any) {
           : err?.response?.data?.error || err?.message || 'Could not start session',
         isTimeout
           ? [{ text: 'Check Session Tab', onPress: () => setModalVisible(false) },
-          { text: 'OK' }]
+             { text: 'OK' }]
           : [{ text: 'OK' }]
       );
     } finally {
@@ -727,24 +705,30 @@ export default function MapScreen({ navigation }: any) {
         [{ text: 'OK' }]
       );
       return;
-    }
+    }   
     if (!selected || !selectedConnector) return;
     setReserving(true);
     try {
       const res = await api.post('/api/reservations', {
         chargeBoxId: selected.chargeBoxId,
         connectorId: selectedConnector,
-      }, { timeout: 60000 });
+      },{ timeout: 60000 });
       const newReservation = res.data.data;
       setActiveReservation(newReservation);
+
       await fetchChargers();
+      const freshChargers = useChargerStore.getState().chargers;
+      const updatedCharger = freshChargers.find(
+        c => c.chargeBoxId === selected.chargeBoxId
+      );
+      if (updatedCharger) setSelected(updatedCharger);
+
       setModalVisible(false);
-      setSelectedId(null); 
       Alert.alert(
         'Reserved',
         `Connector #${selectedConnector} on ${selected.chargeBoxId} is held for 30 minutes.`
-      ); 
-      } catch (err: any) {
+      );
+    } catch (err: any) {
       Alert.alert('Failed', err?.response?.data?.error || 'Could not reserve');
     } finally {
       setReserving(false);
@@ -753,6 +737,7 @@ export default function MapScreen({ navigation }: any) {
 
   const handleCancelReservation = async () => {
     if (!activeReservation) return;
+
     Alert.alert(
       'Cancel Reservation',
       'Are you sure you want to cancel this reservation?',
@@ -766,6 +751,11 @@ export default function MapScreen({ navigation }: any) {
               await api.delete(`/api/reservations/${activeReservation.id}`);
               setActiveReservation(null);
               await fetchChargers();
+              const freshChargers = useChargerStore.getState().chargers;
+              const updatedCharger = freshChargers.find(
+                c => c.chargeBoxId === selected?.chargeBoxId
+              );
+              if (updatedCharger) setSelected(updatedCharger);
               Alert.alert('Cancelled', 'Your reservation has been cancelled.');
             } catch (err: any) {
               Alert.alert('Failed', err?.response?.data?.error || 'Could not cancel reservation');
@@ -781,7 +771,7 @@ export default function MapScreen({ navigation }: any) {
       case 'navigate': {
         const c = (chargers || []).find(x => x.chargeBoxId === action.chargeBoxId);
         if (c) {
-          setSelectedId(c.chargeBoxId); 
+          setSelected(c);
           setModalVisible(true);
           mapRef.current?.animateToRegion({
             latitude: c.latitude, longitude: c.longitude,
@@ -793,8 +783,8 @@ export default function MapScreen({ navigation }: any) {
       case 'filter':
         if (action.availability) setFilters({ availability: action.availability });
         if (action.minPower != null) setFilters({ minPower: action.minPower });
-        break; 
-	case 'navigate_tab':
+        break;
+      case 'navigate_tab':
         console.log('Navigate to tab:', action.tab);
         break;
     }
@@ -843,8 +833,8 @@ export default function MapScreen({ navigation }: any) {
       {/* Offline banner */}
       {isOffline === true && (
         <View style={s.offlineBanner}>
-          <View style={s.offlineTitleRow}> 
-	  <AppIcon.WifiOff size={IconSize.xs} color={IconColors.warning} />
+          <View style={s.offlineTitleRow}>
+            <AppIcon.WifiOff size={IconSize.xs} color={IconColors.warning} />
             <Text style={s.offlineTitle}>Offline Mode</Text>
           </View>
           <Text style={s.offlineText}>
@@ -893,6 +883,7 @@ export default function MapScreen({ navigation }: any) {
           <ActivityIndicator size="small" color="#22d3ee" />
         </View>
       )}
+
       {/* Filter sheet */}
       {showFilterSheet && (
         <TouchableOpacity style={s.overlay}
@@ -904,10 +895,7 @@ export default function MapScreen({ navigation }: any) {
 
       {/* Charger modal */}
       <Modal visible={modalVisible} animationType="slide" transparent
-        onRequestClose={() => {
-          setModalVisible(false);
-          setSelectedId(null);
-        }}>
+        onRequestClose={() => setModalVisible(false)}>
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
             {selected && (
@@ -919,10 +907,7 @@ export default function MapScreen({ navigation }: any) {
                     <Text style={s.modalName}>{selected.name}</Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => {
-                      setModalVisible(false);
-                      setSelectedId(null); 
-                    }}
+                    onPress={() => setModalVisible(false)}
                     style={s.closeBtn}>
                     <AppIcon.Close size={IconSize.md} color={IconColors.muted} />
                   </TouchableOpacity>
@@ -942,8 +927,8 @@ export default function MapScreen({ navigation }: any) {
                         : `${selected.distance.toFixed(1)}km away`}
                     </Text>
                   </View>
-                )} 
-		<View style={s.infoRow}>
+                )}
+                <View style={s.infoRow}>
                   <AppIcon.Zap size={IconSize.sm} color={IconColors.muted} />
                   <Text style={s.infoText}>
                     {selected.availableConnectors}/{selected.totalConnectors} available
@@ -953,57 +938,23 @@ export default function MapScreen({ navigation }: any) {
                   </Text>
                 </View>
 
-                {/* Device Info - Firmware/Model for Support & Debugging */}
-                {(selected.firmwareVersion || selected.chargePointModel || selected.chargePointVendor) && (
-                  <TouchableOpacity
-                    style={s.infoRow}
-                    onPress={() => {
-
-                      const info = [
-                        selected.chargePointVendor,
-                        selected.chargePointModel,
-                        selected.firmwareVersion && `FW:${selected.firmwareVersion}`
-                      ].filter(Boolean).join(' | ');
-
-                      if (info) {
-                        import('expo-clipboard').then(Clipboard => {
-                          Clipboard.setString(info);
-                          Alert.alert('Copied', 'Device info copied to clipboard');
-                        });
-                      }
-                    }}
-		    >
-                    <AppIcon.Settings size={IconSize.sm} color={IconColors.muted} />
-                    <Text style={[s.infoText, { flex: 1 }]} numberOfLines={1}>
-                      {selected.chargePointVendor && <Text>{selected.chargePointVendor} </Text>}
-                      {selected.chargePointModel && <Text>{selected.chargePointModel} </Text>}
-                      {selected.firmwareVersion && <Text style={{ color: '#60a5fa' }}>FW: {selected.firmwareVersion}</Text>}
-                    </Text>
-                    <AppIcon.Copy size={IconSize.xs} color={IconColors.muted} />
-                  </TouchableOpacity>
-                )}
-
                 {/* Status + Navigate - Using DynamicStatusIcon here (Modal is safe) */}
                 <View style={s.actionRow}>
-                  {(() => {
-                    const statusInfo = getStatusInfo(selected.status);
-                    const statusColor = statusInfo.colorClass || '#6b7280';
-
-                    return (
-                      <View style={[s.statusBadge, { backgroundColor: `${statusColor}22` }]}>
-                        <DynamicStatusIcon
-                          status={selected.status}
-                          isReserved={reservedChargeBoxId === selected.chargeBoxId} 
-			  size={IconSize.sm}
-                        />
-                        <Text style={[s.statusText, { color: statusColor }]}>
-                          {String(statusInfo.label)} {/* Ensure it's a string */}
-                        </Text>
-                      </View>
-                    );
-                  })()}
-
-                  <TouchableOpacity style={s.navigateBtn} onPress={() => handleNavigate(selected)}>
+                  <View style={[s.statusBadge,
+                    { backgroundColor:
+                        (STATUS_COLOR[selected.status] || '#6b7280') + '22' }]}>
+                    <DynamicStatusIcon 
+                      status={selected.status}
+                      isReserved={reservedChargeBoxId === selected.chargeBoxId}
+                      size={IconSize.sm}
+                    />
+                    <Text style={[s.statusText,
+                      { color: STATUS_COLOR[selected.status] || '#6b7280' }]}>
+                      {selected.status}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={s.navigateBtn}
+                    onPress={() => handleNavigate(selected)}>
                     <View style={s.navigateBtnContent}>
                       <AppIcon.Navigation size={IconSize.xs} color={IconColors.primary} />
                       <Text style={s.navigateTxt}>Navigate</Text>
@@ -1029,7 +980,7 @@ export default function MapScreen({ navigation }: any) {
                         </Text>
                       </View>
                       <Text style={[s.reservationBannerText,
-                      { fontSize: 11, opacity: 0.8 }]}>
+                        { fontSize: 11, opacity: 0.8 }]}>
                         Connector #{activeReservation.connectorId} · expires in{' '}
                         {Math.max(0, Math.floor(
                           (new Date(activeReservation.expiresAt).getTime() - Date.now())
@@ -1043,32 +994,19 @@ export default function MapScreen({ navigation }: any) {
                   </View>
                 )}
 
-                {/* Connectors */} 
-		<Text style={s.sectionTitle}>SELECT CONNECTOR</Text>
+                {/* Connectors */}
+                <Text style={s.sectionTitle}>SELECT CONNECTOR</Text>
                 <View style={s.connectorGrid}>
-                  {(selected.connectors || selected.connectorStatuses || []).map((conn: any) => {
+                  {(selected.connectors || selected.connectorStatuses || []).map(conn => {
                     const available = conn.status === 'Available';
                     const isReserved = conn.status === 'Reserved';
                     const isMyRes =
                       activeReservation?.chargeBoxId === selected.chargeBoxId &&
                       activeReservation?.connectorId === conn.connectorId;
                     const isSel = selectedConnector === conn.connectorId;
-
-                    
-                    const maxPowerWatts = conn.maxPowerWatts || selected.maxPower || 0;
-                    const powerKw = Math.round(maxPowerWatts / 1000);
-
-                    const speedLabel = powerKw >= 150 ? 'Ultra Fast' :
-                      powerKw >= 50 ? 'Fast' :
-                        powerKw >= 22 ? 'Accelerated' : 'Standard';
-
-                    const powerType = conn.powerType ||
-                      selected.capabilities?.powerType || (powerKw >= 30 ? 'DC' : 'AC'); 
-
-
                     const clr = isMyRes
-                      ? '#7c3aed' 
-                      : getStatusInfo(conn.status).colorClass || '#6b7280';
+                      ? '#7c3aed'
+                      : STATUS_COLOR[conn.status] || '#6b7280';
 
                     return (
                       <TouchableOpacity
@@ -1079,7 +1017,8 @@ export default function MapScreen({ navigation }: any) {
                           isSel && s.connCardSel,
                           isMyRes && s.connCardMyReserved,
                           isReserved && !isMyRes && s.connCardReserved,
-                          (!available && !isReserved && !isMyRes) && s.connCardDim,
+                          (!available && !isReserved && !isMyRes)
+                            && s.connCardDim,
                         ]}
                         onPress={() =>
                           (available || isMyRes) &&
@@ -1087,64 +1026,20 @@ export default function MapScreen({ navigation }: any) {
                         }
                         disabled={!available && !isMyRes}
                       >
-                        {/* Icon */}
+                        {/*  Icon instead of emoji */}
                         {isMyRes ? (
                           <AppIcon.Clock size={20} color="#c4b5fd" />
-                        ) : ( 
-		          <AppIcon.Plug size={20} color={clr} />
+                        ) : (
+                          <AppIcon.Plug size={20} color={clr} />
                         )}
-
-                        {/* Connector ID */}
                         <Text style={s.connId}>#{conn.connectorId}</Text>
-
-                        {/* Power + Speed + Type Layout */}
-                        <View style={{ alignItems: 'center', marginTop: 4 }}>
-                          <Text style={s.connPower}>{powerKw} kW</Text>
-
-                          {/* Speed Pill - Highlighted only when selected */}
-                          <View style={[s.connSpeedPill, {
-                            backgroundColor: isSel ? '#22d3ee' : 'transparent',
-                            borderColor: isSel ? '#22d3ee' : '#334155',
-                            borderWidth: 1,
-                            paddingHorizontal: 6,
-                            paddingVertical: 2,
-                            borderRadius: 4,
-                            marginTop: 4
-                          }]}>
-                            <Text style={[s.connSpeedText, {
-                              color: isSel ? '#0f172a' : '#94a3b8',
-                              fontWeight: '700',
-                              fontSize: 9
-                            }]}>
-                              {speedLabel}
-                            </Text>
-                          </View>
-
-                          {/* Power Type (DC/AC) - Colored for visibility */}
-                          <Text style={[s.connType, {
-                            color: powerType === 'DC' ? '#60a5fa' : '#60a5fa', 
-                            fontWeight: '600',
-                            fontSize: 10,
-                            marginTop: 4
-                          }]}>
-                            {powerType}
-                          </Text>
-                        </View>
-
-                        {/* Status Dot */}
-                        <View style={[s.connDot, { backgroundColor: clr, marginTop: 6 }]} />
-
-                        {/* Status Text - Human Readable */}
-                        <Text style={[s.connStatus, { color: clr, marginTop: 2 }]}>
-                          {isMyRes ? 'Your Reservation' : getStatusInfo(conn.status).label}
+                        <View style={[s.connDot, { backgroundColor: clr }]} />
+                        <Text style={[s.connStatus, { color: clr }]}>
+                          {isMyRes ? 'Your Reservation' : conn.status}
                         </Text>
-
-                        {/* Reservation Badge */}
-                        {isMyRes && ( 
-			<Text style={s.connReservedBadge}>Tap to start</Text>
+                        {isMyRes && (
+                          <Text style={s.connReservedBadge}>Tap to start</Text>
                         )}
-
-                        {/* Selection Checkmark */}
                         {isSel && !isMyRes && (
                           <Text style={s.connTick}>✓</Text>
                         )}
@@ -1190,8 +1085,8 @@ export default function MapScreen({ navigation }: any) {
                       </TouchableOpacity>
                     )}
                   </View>
-                )} 
-		</ScrollView>
+                )}
+              </ScrollView>
             )}
           </View>
         </View>
@@ -1202,7 +1097,7 @@ export default function MapScreen({ navigation }: any) {
   );
 }
 
-// ── Styles ───────────────────────────────────────────
+// ── Styles ────────────────────────────────────────────
 const s = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
@@ -1240,7 +1135,8 @@ const s = StyleSheet.create({
     color: '#fcd34d', fontSize: 13, fontWeight: '700',
   },
   offlineText: { color: '#fde68a', fontSize: 12, lineHeight: 16 },
-  globalReservationBanner: { 
+
+  globalReservationBanner: {
     position: 'absolute', top: 60, left: 16, right: 16,
     backgroundColor: '#3b0764', borderRadius: 10,
     padding: 12, borderWidth: 1, borderColor: '#7c3aed',
@@ -1259,6 +1155,7 @@ const s = StyleSheet.create({
   globalReservationCancel: {
     color: '#f87171', fontSize: 12, fontWeight: '700', marginLeft: 8,
   },
+
   legend: {
     position: 'absolute', bottom: 16, left: 16,
     backgroundColor: '#1e293bcc', borderRadius: 10,
@@ -1290,7 +1187,7 @@ const s = StyleSheet.create({
   modalTitle: { color: '#22d3ee', fontSize: 16, fontWeight: '800' },
   modalName: { color: '#94a3b8', fontSize: 12, marginTop: 2 },
   closeBtn: { padding: 4, marginLeft: 8 },
-  closeTxt: { color: '#64748b', fontSize: 20 }, 
+  closeTxt: { color: '#64748b', fontSize: 20 },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1340,35 +1237,10 @@ const s = StyleSheet.create({
     backgroundColor: '#1c1a0e',
     borderColor: '#f59e0b',
     borderWidth: 2,
-  }, 
+  },
   connId: { color: '#f1f5f9', fontSize: 14, fontWeight: '700' },
   connDot: { width: 6, height: 6, borderRadius: 3, marginTop: 4 },
   connStatus: { fontSize: 10, marginTop: 2 },
-  connPower: {
-    color: '#f1f5f9',
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-  connSpeedPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    marginTop: 4,
-  },
-  connSpeedText: {
-    fontSize: 8,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  connType: {
-    fontSize: 9,
-    fontWeight: '600',
-    marginTop: 4,
-    textTransform: 'uppercase',
-  },
   connTypePill: {
     backgroundColor: '#0c4a6e',
     borderRadius: 4,
@@ -1386,12 +1258,12 @@ const s = StyleSheet.create({
     color: '#f59e0b',
     fontSize: 9,
     marginTop: 2,
-  },
+  },  
   connReservedBadge: {
     color: '#c4b5fd', fontSize: 9, fontWeight: '700', marginTop: 2,
   },
   connTick: {
-   color: '#22d3ee', fontSize: 16, fontWeight: '800', marginTop: 4,
+    color: '#22d3ee', fontSize: 16, fontWeight: '800', marginTop: 4,
   },
   startBtn: {
     backgroundColor: '#22d3ee', borderRadius: 14,
@@ -1440,8 +1312,8 @@ const pc = StyleSheet.create({
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 6, 
-    },
+    alignItems: 'center', marginBottom: 6,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1490,8 +1362,8 @@ const pc = StyleSheet.create({
   noVehicle: { color: '#475569', fontSize: 12, fontStyle: 'italic' },
 });
 
-const fs = StyleSheet.create({ 
-sheet: {
+const fs = StyleSheet.create({
+  sheet: {
     backgroundColor: '#1e293b', borderTopLeftRadius: 24,
     borderTopRightRadius: 24, padding: 24, paddingBottom: 40,
   },

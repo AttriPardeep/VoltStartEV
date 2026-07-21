@@ -52,7 +52,10 @@ interface ChargerState {
     chargeBoxId: string,
     status: string,
     connectorId?: number,
-    connectorStatus?: string
+    connectorStatus?: string,
+    connectorType:   string,   // 'Type2' | 'CCS2' | 'CHAdeMO' etc.
+    vehicleCategory: string,   // '4W' | '2W,3W' etc.
+    maxPowerWatts:   number,   // per-connector max power	
   ) => void;
   fetchChargers: () => Promise<void>;
   requestLocation: () => Promise<void>;
@@ -89,6 +92,38 @@ export const useChargerStore = create<ChargerState>((set, get) => ({
   isOffline: false,
   cacheAge: null,
   lastEtag: null,
+
+
+  updateConnectorStatus: (chargeBoxId: string, connectorId: number, status: string) => {
+    set(state => ({
+      chargers: state.chargers.map(c => {
+        if (c.chargeBoxId !== chargeBoxId) return c;
+  
+        const updatedConnectors = (c.connectorStatuses || []).map(conn =>
+          conn.connectorId === connectorId ? { ...conn, status } : conn
+        );
+  
+        const statuses        = updatedConnectors.map(x => x.status);
+        const availableCount  = statuses.filter(s => s === 'Available').length;
+        const chargingCount   = statuses.filter(s =>
+          ['Charging','Preparing','SuspendedEV','SuspendedEVSE','Finishing'].includes(s)
+        ).length;
+        const faultedCount    = statuses.filter(s => s === 'Faulted').length;
+  
+        const newStatus =
+          faultedCount > 0   ? 'Faulted'   :
+          chargingCount > 0  ? 'Busy'      :
+          availableCount > 0 ? 'Available' : 'Offline';
+  
+        return {
+          ...c,
+          status:              newStatus as any,
+          connectorStatuses:   updatedConnectors,
+          availableConnectors: availableCount,
+        };
+      })
+    }));
+  },
 
   // Update single charger status from WebSocket
   updateChargerStatus: (chargeBoxId, status, connectorId, connectorStatus) => {

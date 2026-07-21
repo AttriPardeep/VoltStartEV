@@ -135,11 +135,11 @@ export default function HistoryScreen() {
       const telemetry = msg.data || msg;
       console.log('📨 incoming telemetry', telemetry);
       setSessions(prev => {
-        console.log('📦 current sessions', prev);
+        console.log('current sessions', prev);
         const updated = prev.map(s => {
           const isMatch =
             Number(s.transactionId) === Number(telemetry.transactionId);
-          console.log('🔍 compare tx', {
+          console.log('compare tx', {
             sessionTx: s.transactionId,
             telemetryTx: telemetry.transactionId,
             match: isMatch,
@@ -162,13 +162,13 @@ export default function HistoryScreen() {
                 ? Number(telemetry.energyKwh)
                 : s.liveEnergyKwh,
           };
-          console.log('✅ updated session', {
+          console.log('updated session', {
             before: s,
             after: newSession,
           });
           return newSession;
         });
-        console.log('📤 updated sessions array', updated);
+        // console.log('updated sessions array', updated);
         return updated;
       });
     };
@@ -207,6 +207,15 @@ export default function HistoryScreen() {
       socket.off('balance_critical', handleBalanceCritical);
     };
   }, [navigation]);
+ 
+  useEffect(() => {
+    const handleSessionStarted = () => {
+      // New session just started — refresh list so active session appears
+      fetchHistory(true); // silent refresh (no loading spinner)
+    };
+     socket.on('session_started', handleSessionStarted);
+    return () => socket.off('session_started', handleSessionStarted);
+  }, [fetchHistory]); 
   
   useEffect(() => {
     const handleSocTargetReached = (data: any) => {

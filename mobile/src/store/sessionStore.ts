@@ -20,17 +20,22 @@ export interface Session {
 }
 
 export interface Telemetry {
-  energyKwh: number;
-  powerW: number;
-  currentA: number;
-  voltageV: number;
-  costSoFar: number;
-  socPercent?: number;
-  meterWh?: number;
-  timestamp?: string;
+  energyKwh:      number;
+  powerW:         number;
+  currentA:       number;
+  voltageV:       number;
+  costSoFar:      number;
+  socPercent?:    number;
+  meterWh?:       number;
+  timestamp?:     string;
   transactionId?: number;
-  chargeBoxId?: string;
-  connectorId?: number;
+  chargeBoxId?:   string;
+  connectorId?:   number;
+  temperatureC?:  number;       
+  currentOfferedA?: number;     
+  currentL1?:     number;
+  currentL2?:     number;
+  currentL3?:     number;
 }
 
 // Full interface — every field used in set() must be declared here

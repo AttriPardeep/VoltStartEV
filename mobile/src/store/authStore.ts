@@ -82,7 +82,7 @@ console.log(' Login attempt:', { username });
     try {
       const res = await api.post('/api/users/login', { username, password });
       const { token, user: apiUser } = res.data.data;
-// ✅ LOG: What API returned
+//  What API returned
 console.log(' Login API response:', {
       userId: apiUser.userId,
       username: apiUser.username,
@@ -98,7 +98,7 @@ console.log(' Login API response:', {
         lastName: apiUser.lastName,
         
         //  Map idTag (may be null for new users)
-        idTag: apiUser.idTag ?? null,
+        idTag: apiUser.idTag ?? apiUser.id_tag ?? apiUser.ocpp_tag_id ?? null,
         
         // Vehicle/charging preferences
         vehicleModel: apiUser.vehicleModel ?? null,
@@ -113,7 +113,7 @@ console.log(' Login API response:', {
         createdAt: apiUser.createdAt,
         updatedAt: apiUser.updatedAt,
       };
-// ✅ LOG: What we're storing
+//  What we're storing
 console.log(' Storing user in auth store:', {
       userId: userData.userId,
       username: userData.username,
@@ -126,7 +126,7 @@ console.log(' Storing user in auth store:', {
         AsyncStorage.setItem('auth_user', JSON.stringify(userData)),
       ]);
 
-// ✅ LOG: Verify storage
+// Verify storage
 const storedUser = await AsyncStorage.getItem('auth_user');
     console.log(' User stored in AsyncStorage:', 
       storedUser ? JSON.parse(storedUser).idTag : 'NULL'

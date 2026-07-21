@@ -25,8 +25,7 @@ import {
 // ─────────────────────────────────────────────────────
 interface RFIDCard {
   id:         number;
-  //match actual backend column name (ocpp_tag_id not id_tag)
-  ocpp_tag_id: string;
+  id_tag:     string;
   label:      string;
   tag_type:   'system' | 'external_rfid' | 'fleet';
   is_primary: number;
@@ -77,7 +76,7 @@ function TagTypeBadge({ type }: { type: string }) {
 }
 
 // ─────────────────────────────────────────────────────
-// FIX 4: refreshUserTag as regular async function
+// refreshUserTag as regular async function
 // NOT module-level — called explicitly when needed
 // ─────────────────────────────────────────────────────
 async function refreshUserTag(): Promise<void> {
@@ -90,8 +89,7 @@ async function refreshUserTag(): Promise<void> {
       cards.find(c => c.tag_type === 'system' && c.is_active === 1);
 
     if (primary) {
-      // use ocpp_tag_id
-      useAuthStore.getState().updateUser({ idTag: primary.ocpp_tag_id });
+      useAuthStore.getState().updateUser({ idTag: primary.id_tag });
     }
   } catch (err) {
     console.warn('Could not refresh user tag:', err);
@@ -167,13 +165,11 @@ function AddRFIDModal({
               </View>
               
               <Text style={m.infoText}>
-                {"Look for the UID printed on the back of your RFID card or fob. It's usually 8 characters like "}
-                <Text style={m.infoCode}>A1B2C3D4</Text>
-                {" or formatted as "}
-                <Text style={m.infoCode}>A1:B2:C3:D4</Text>
-                {". Both formats are accepted."}
+                Look for the UID printed on the back of your RFID card or fob. It's usually 8 characters like{' '}
+                <Text style={m.infoCode}>A1B2C3D4</Text> or formatted as{' '}
+                <Text style={m.infoCode}>A1:B2:C3:D4</Text>. Both formats are accepted.
               </Text>
-            </View> {/* <--- THIS WAS THE MISSING TAG CAUSING THE SYNTAX ERROR */}
+            </View> 
 
             <Text style={m.label}>Card UID *</Text>
             <TextInput
@@ -231,14 +227,16 @@ export default function RFIDSection() {
     }
   }, []);
 
-  useEffect(() => { fetchCards(); }, [fetchCards]);
+  useEffect(() => {
+      fetchCards();
+      refreshUserTag(); // Triggers the top-level store synchronization
+    }, [fetchCards]);
 
   const handleSetPrimary = async (card: RFIDCard) => {
     try {
       await api.put(`/api/users/me/rfid/${card.id}/primary`);
       await fetchCards();
-      //  use ocpp_tag_id
-      useAuthStore.getState().updateUser({ idTag: card.ocpp_tag_id });
+      useAuthStore.getState().updateUser({ idTag: card.id_tag });
       await refreshUserTag();
     } catch (err: any) {
       Alert.alert('Failed', err?.response?.data?.error || 'Could not update');
@@ -255,7 +253,7 @@ export default function RFIDSection() {
     }
     Alert.alert(
       'Remove Card',
-      `Remove "${card.label}" (${card.ocpp_tag_id})?`,
+      `Remove "${card.label}" (${card.id_tag})?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

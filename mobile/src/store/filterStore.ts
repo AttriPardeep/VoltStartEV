@@ -6,6 +6,8 @@ export interface ChargerFilters {
   minPower: number;
   maxDistance: number;
   maxPrice: number;
+  connectorType: string[];    //  e.g. ['CCS2', 'Type2']
+  vehicleType:   string;      //  '2W' | '3W' | '4W' | 'all'
 }
 
 interface FilterState {
@@ -20,7 +22,9 @@ const DEFAULT: ChargerFilters = {
   availability: 'all',
   minPower: 0,
   maxDistance: 999,
-  maxPrice: 999
+  maxPrice: 999,
+  connectorType: [],  // empty = all
+  vehicleType:   'all',
 };
 
 export const useFilterStore = create<FilterState>((set) => ({

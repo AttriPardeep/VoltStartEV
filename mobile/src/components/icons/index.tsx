@@ -4,7 +4,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import {
   //  Battery & Charging
   Zap, CreditCard, Building2, User, Wallet, CarFront,
-  BatteryCharging, Battery, BatteryFull, BatteryMedium, BatteryLow,
+  BatteryCharging, Battery, BatteryFull, BatteryMedium, BatteryLow, Thermometer ,
   // ️ Status & Alerts
   TriangleAlert, CheckCircle, XCircle, AlertCircle, Info,
   // ️ Navigation & Map
@@ -16,6 +16,7 @@ import {
   Wifi, WifiOff, Plug, PlugZap, Gauge, IndianRupee, Home,
   //  Additional icons for dynamic system
   CircleX, SquarePen, Target, Activity, DollarSign,
+
 } from 'lucide-react-native';
 
 // ── Types ─────────────────────────────────────────────
@@ -122,6 +123,7 @@ export const AppIcon = Object.freeze({
   BatteryFull:     createIcon(BatteryFull,     IconColors.success),
   BatteryMedium:   createIcon(BatteryMedium,   IconColors.warning),
   BatteryLow:      createIcon(BatteryLow,      IconColors.error),
+  Thermometer:     createIcon(Thermometer,     IconColors.primary),
  
   //  Payment & Wallet
   Wallet:          createIcon(Wallet,          IconColors.primary),
@@ -182,6 +184,7 @@ export const AppIcon = Object.freeze({
   Gauge:           createIcon(Gauge,           IconColors.muted),
   Activity:        createIcon(Activity,        IconColors.primary),
   Target:          createIcon(Target,          IconColors.primary),
+   
 });
 
 // ── Composed helper components (STATIC) ──────────────────
